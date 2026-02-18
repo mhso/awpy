@@ -11,9 +11,12 @@ import (
 	"strconv"
 	"strings"
 
-	dem "github.com/markus-wa/demoinfocs-golang/v3/pkg/demoinfocs"
-	common "github.com/markus-wa/demoinfocs-golang/v3/pkg/demoinfocs/common"
-	events "github.com/markus-wa/demoinfocs-golang/v3/pkg/demoinfocs/events"
+	//"google.golang.org/protobuf/proto"
+
+	dem "github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs"
+	"github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/common"
+	"github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/events"
+	"github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/msg"
 )
 
 const unknown = "Unknown"
@@ -188,7 +191,7 @@ type GrenadeAction struct {
 	GrenadeX         float64 `json:"grenadeX"`
 	GrenadeY         float64 `json:"grenadeY"`
 	GrenadeZ         float64 `json:"grenadeZ"`
-	UniqueID         int64   `json:"entityId"`
+	UniqueID         int     `json:"entityId"`
 }
 
 // BombAction events.
@@ -376,7 +379,7 @@ type GrenadeInfo struct {
 
 // Inferno from molly or incend. grenade.
 type Fire struct {
-	UniqueID int64   `json:"uniqueID"`
+	UniqueID int     `json:"uniqueID"`
 	X        float64 `json:"x"`
 	Y        float64 `json:"y"`
 	Z        float64 `json:"z"`
@@ -401,12 +404,6 @@ type PlayerInfo struct {
 	X               float64      `json:"x"`
 	Y               float64      `json:"y"`
 	Z               float64      `json:"z"`
-	EyeX            float64      `json:"eyeX"`
-	EyeY            float64      `json:"eyeY"`
-	EyeZ            float64      `json:"eyeZ"`
-	VelX            float64      `json:"velocityX"`
-	VelY            float64      `json:"velocityY"`
-	VelZ            float64      `json:"velocityZ"`
 	ViewX           float64      `json:"viewX"`
 	ViewY           float64      `json:"viewY"`
 	Hp              int64        `json:"hp"`
@@ -459,7 +456,7 @@ type WeaponInfo struct {
 
 // Smoke holds current smoke info.
 type Smoke struct {
-	GrenadeEntityID int64   `json:"grenadeEntityID"`
+	GrenadeEntityID int     `json:"grenadeEntityID"`
 	StartTick       int64   `json:"startTick"`
 	X               float64 `json:"x"`
 	Y               float64 `json:"y"`
@@ -689,20 +686,12 @@ func parsePlayer(gs dem.GameState, p *common.Player) PlayerInfo {
 		currentPlayer.PlayerSide = unknown
 	}
 
-	playerPos := p.LastAlivePosition
-	playerEyePos := p.PositionEyes()
-	playerVel := p.Velocity()
+	playerPos := p.Position()
 
 	// Calc other metrics
 	currentPlayer.X = playerPos.X
 	currentPlayer.Y = playerPos.Y
 	currentPlayer.Z = playerPos.Z
-	currentPlayer.EyeX = playerEyePos.X
-	currentPlayer.EyeY = playerEyePos.Y
-	currentPlayer.EyeZ = playerEyePos.Z
-	currentPlayer.VelX = playerVel.X
-	currentPlayer.VelY = playerVel.Y
-	currentPlayer.VelZ = playerVel.Z
 	currentPlayer.ViewX = float64(p.ViewDirectionX())
 	currentPlayer.ViewY = float64(p.ViewDirectionY())
 	currentPlayer.LastPlaceName = p.LastPlaceName()
@@ -1080,12 +1069,10 @@ func registerSmokeHandler(demoParser *dem.Parser, smokes *[]Smoke) {
 	(*demoParser).RegisterEventHandler(func(e events.SmokeStart) {
 		gs := (*demoParser).GameState()
 		s := Smoke{}
-		if e.Grenade != nil {
-			s.GrenadeEntityID = e.Grenade.UniqueID()
-		} else {
-			s.GrenadeEntityID = int64(e.GrenadeEntityID)
-		}
+
+		s.GrenadeEntityID = e.GrenadeEntityID
 		s.StartTick = int64(gs.IngameTick())
+
 		s.X = e.Position.X
 		s.Y = e.Position.Y
 		s.Z = e.Position.Z
@@ -1101,12 +1088,8 @@ func registerSmokeHandler(demoParser *dem.Parser, smokes *[]Smoke) {
 	})
 
 	(*demoParser).RegisterEventHandler(func(e events.SmokeExpired) {
-		var removeID int64
-		if e.Grenade != nil {
-			removeID = e.Grenade.UniqueID()
-		} else {
-			removeID = int64(e.GrenadeEntityID)
-		}
+		var removeID = e.GrenadeEntityID
+
 		for i, ele := range *smokes {
 			if ele.GrenadeEntityID == removeID {
 				*smokes = removeExpiredSmoke(*smokes, i)
@@ -1504,7 +1487,7 @@ func registerBombDefusedHandler(demoParser *dem.Parser, currentGame *Game, curre
 			}
 
 			// Player loc
-			playerPos := e.Player.LastAlivePosition
+			playerPos := e.Player.Position()
 			currentBomb.PlayerX = &playerPos.X
 			currentBomb.PlayerY = &playerPos.Y
 			currentBomb.PlayerZ = &playerPos.Z
@@ -1546,7 +1529,7 @@ func registerBombDefuseStartHandler(demoParser *dem.Parser, currentGame *Game, c
 			}
 
 			// Player loc
-			playerPos := e.Player.LastAlivePosition
+			playerPos := e.Player.Position()
 			currentBomb.PlayerX = &playerPos.X
 			currentBomb.PlayerY = &playerPos.Y
 			currentBomb.PlayerZ = &playerPos.Z
@@ -1590,7 +1573,7 @@ func registerBombDefuseAbortHandler(demoParser *dem.Parser, currentGame *Game, c
 			}
 
 			// Player loc
-			playerPos := e.Player.LastAlivePosition
+			playerPos := e.Player.Position()
 			currentBomb.PlayerX = &playerPos.X
 			currentBomb.PlayerY = &playerPos.Y
 			currentBomb.PlayerZ = &playerPos.Z
@@ -1633,7 +1616,7 @@ func registerWeaponFiresHandler(demoParser *dem.Parser, currentGame *Game, curre
 			currentWeaponFire.PlayerSide = playerSide
 
 			// Player loc
-			playerPos := e.Shooter.LastAlivePosition
+			playerPos := e.Shooter.Position()
 
 			currentWeaponFire.PlayerX = playerPos.X
 			currentWeaponFire.PlayerY = playerPos.Y
@@ -1685,7 +1668,7 @@ func registerPlayerFlashedHandler(demoParser *dem.Parser, currentGame *Game, cur
 			currentFlash.AttackerSide = attackerSide
 
 			// Attacker loc
-			attackerPos := e.Attacker.LastAlivePosition
+			attackerPos := e.Attacker.Position()
 
 			currentFlash.AttackerX = attackerPos.X
 			currentFlash.AttackerY = attackerPos.Y
@@ -1723,7 +1706,7 @@ func registerPlayerFlashedHandler(demoParser *dem.Parser, currentGame *Game, cur
 					currentFlash.PlayerSide = &playerSide
 
 					// Player loc
-					playerPos := e.Player.LastAlivePosition
+					playerPos := e.Player.Position()
 
 					playerX := playerPos.X
 					playerY := playerPos.Y
@@ -1775,7 +1758,7 @@ func registerBombPlantedHandler(demoParser *dem.Parser, currentGame *Game, curre
 			}
 
 			// Player loc
-			playerPos := e.Player.LastAlivePosition
+			playerPos := e.Player.Position()
 			currentBomb.PlayerX = &playerPos.X
 			currentBomb.PlayerY = &playerPos.Y
 			currentBomb.PlayerZ = &playerPos.Z
@@ -1811,7 +1794,7 @@ func registerBombPlantBeginHandler(demoParser *dem.Parser, currentGame *Game, cu
 			}
 
 			// Player loc
-			playerPos := e.Player.LastAlivePosition
+			playerPos := e.Player.Position()
 			currentBomb.PlayerX = &playerPos.X
 			currentBomb.PlayerY = &playerPos.Y
 			currentBomb.PlayerZ = &playerPos.Z
@@ -1853,7 +1836,7 @@ func registerBombPlantAbortedHandler(demoParser *dem.Parser, currentGame *Game, 
 			}
 
 			// Player loc
-			playerPos := e.Player.LastAlivePosition
+			playerPos := e.Player.Position()
 			currentBomb.PlayerX = &playerPos.X
 			currentBomb.PlayerY = &playerPos.Y
 			currentBomb.PlayerZ = &playerPos.Z
@@ -1872,7 +1855,7 @@ func registerGrenadeThrowHandler(demoParser *dem.Parser, currentGame *Game, curr
 
 		if e.Projectile != nil && e.Projectile.Thrower != nil {
 			currentGrenade := GrenadeAction{}
-			currentGrenade.UniqueID = e.Projectile.UniqueID()
+			currentGrenade.UniqueID = e.Projectile.Entity.ID()
 			currentGrenade.ThrowTick = int64(gs.IngameTick())
 			currentGrenade.ThrowSecond = determineSecond(currentGrenade.ThrowTick, *currentRound, currentGame.TickRate)
 			currentGrenade.ThrowClockTime = calculateClocktime(currentGrenade.ThrowTick, *currentRound, currentGame.TickRate)
@@ -1929,7 +1912,7 @@ func registerGrenadeDestroyHandler(demoParser *dem.Parser, currentGame *Game, cu
 
 		if e.Projectile != nil && e.Projectile.Thrower != nil {
 			for i, g := range currentRound.Grenades {
-				if g.UniqueID == e.Projectile.UniqueID() {
+				if g.UniqueID == e.Projectile.Entity.ID() {
 					currentRound.Grenades[i].DestroyTick = int64(gs.IngameTick())
 					currentRound.Grenades[i].DestroySecond = determineSecond(
 						currentRound.Grenades[i].DestroyTick, *currentRound, currentGame.TickRate)
@@ -2013,7 +1996,7 @@ func registerKillHandler(demoParser *dem.Parser, currentGame *Game, currentRound
 				if ele != nil {
 					currentProjectile := GrenadeInfo{}
 					currentProjectile.ProjectileType = ele.WeaponInstance.String()
-					objPos := ele.Trajectory[len(ele.Trajectory)-1]
+					objPos := ele.Trajectory[len(ele.Trajectory)-1].Position
 
 					currentProjectile.X = objPos.X
 					currentProjectile.Y = objPos.Y
@@ -2029,7 +2012,7 @@ func registerKillHandler(demoParser *dem.Parser, currentGame *Game, currentRound
 				if ele != nil {
 					currentFire := Fire{}
 					objPos := ele.Entity.Position()
-					currentFire.UniqueID = ele.UniqueID()
+					currentFire.UniqueID = ele.Entity.ID()
 
 					currentFire.X = objPos.X
 					currentFire.Y = objPos.Y
@@ -2105,7 +2088,7 @@ func registerKillHandler(demoParser *dem.Parser, currentGame *Game, currentRound
 			}
 
 			currentKill.AttackerSide = &attackerSide
-			attackerPos := e.Killer.LastAlivePosition
+			attackerPos := e.Killer.Position()
 
 			currentKill.AttackerX = &attackerPos.X
 			currentKill.AttackerY = &attackerPos.Y
@@ -2142,7 +2125,7 @@ func registerKillHandler(demoParser *dem.Parser, currentGame *Game, currentRound
 			}
 
 			currentKill.VictimSide = &victimSide
-			victimPos := e.Victim.LastAlivePosition
+			victimPos := e.Victim.Position()
 
 			currentKill.VictimX = &victimPos.X
 			currentKill.VictimY = &victimPos.Y
@@ -2306,7 +2289,7 @@ func registerDamageHandler(demoParser *dem.Parser, currentGame *Game, currentRou
 			}
 			currentDamage.AttackerSide = &attackerSide
 
-			attackerPos := e.Attacker.LastAlivePosition
+			attackerPos := e.Attacker.Position()
 
 			currentDamage.AttackerX = &attackerPos.X
 			currentDamage.AttackerY = &attackerPos.Y
@@ -2350,7 +2333,7 @@ func registerDamageHandler(demoParser *dem.Parser, currentGame *Game, currentRou
 			}
 			currentDamage.VictimSide = &victimSide
 
-			victimPos := e.Player.LastAlivePosition
+			victimPos := e.Player.Position()
 
 			currentDamage.VictimX = &victimPos.X
 			currentDamage.VictimY = &victimPos.Y
@@ -2484,7 +2467,7 @@ func registerFrameHandler(demoParser *dem.Parser, currentGame *Game, currentRoun
 			for _, ele := range allGrenades {
 				currentProjectile := GrenadeInfo{}
 				currentProjectile.ProjectileType = ele.WeaponInstance.String()
-				objPos := ele.Trajectory[len(ele.Trajectory)-1]
+				objPos := ele.Trajectory[len(ele.Trajectory)-1].Position
 
 				currentProjectile.X = objPos.X
 				currentProjectile.Y = objPos.Y
@@ -2498,7 +2481,7 @@ func registerFrameHandler(demoParser *dem.Parser, currentGame *Game, currentRoun
 			for _, ele := range allInfernos {
 				currentFire := Fire{}
 				objPos := ele.Entity.Position()
-				currentFire.UniqueID = ele.UniqueID()
+				currentFire.UniqueID = ele.Entity.ID()
 
 				currentFire.X = objPos.X
 				currentFire.Y = objPos.Y
@@ -2546,6 +2529,20 @@ func registerFrameHandler(demoParser *dem.Parser, currentGame *Game, currentRoun
 		} else {
 			*currentFrameIdx++
 		}
+	})
+}
+
+func registerDemoHeaderMessageHandler(demoParser *dem.Parser, currentGame *Game) {
+	(*demoParser).RegisterNetMessageHandler(func(m *msg.CDemoFileHeader) {
+		currentGame.Map = cleanMapName(*m.MapName)
+		currentGame.ClientName = *m.ClientName
+	})
+}
+
+func registerDemoInfoMessageHandler(demoParser *dem.Parser, currentGame *Game) {
+	(*demoParser).RegisterNetMessageHandler(func(m *msg.CDemoFileInfo) {
+		currentGame.PlaybackTicks = int64(*m.PlaybackTicks)
+		currentGame.PlaybackFrames = int64(*m.PlaybackFrames)
 	})
 }
 
@@ -2632,17 +2629,17 @@ func main() {
 	checkError(err)
 	defer f.Close()
 
-	// Create new demoparser
+	// // Create new demoparser
+	// cfg := dem.DefaultParserConfig
+	// cfg.AdditionalNetMessageCreators = map[int]dem.NetMessageCreator{
+	// 	int(msg.EDemoCommands_DEM_FileHeader): func() proto.Message {
+	// 		return new(msg.CDemoFileHeader)
+	// 	},
+	// }
+
+	// p := dem.NewParserWithConfig(f, cfg)
 	p := dem.NewParser(f)
 	defer p.Close()
-
-	// Parse demofile header
-	header, err := p.ParseHeader()
-	checkError(err)
-
-	// Parse nav mesh given the map name
-	currentMap := header.MapName
-	currentMap = cleanMapName(currentMap)
 
 	// Create flags to guide parsing
 	roundStarted := 0
@@ -2655,15 +2652,16 @@ func main() {
 	// Create game object, then initial round object
 	currentGame := Game{}
 	currentGame.MatchName = *demoIDPtr
-	currentGame.Map = cleanMapName(currentMap)
+
+	// Parse header info
+	registerDemoHeaderMessageHandler(&p, &currentGame)
+	registerDemoInfoMessageHandler(&p, &currentGame)
+
 	if p.TickRate() == 0 {
 		currentGame.TickRate = 128
 	} else {
 		currentGame.TickRate = int64(math.Round(p.TickRate())) // Rounds to 127 instead
 	}
-	currentGame.PlaybackTicks = int64(header.PlaybackTicks)
-	currentGame.PlaybackFrames = int64(header.PlaybackFrames)
-	currentGame.ClientName = header.ClientName
 
 	// Create empty smoke tracking list
 	smokes := []Smoke{}
@@ -2767,6 +2765,7 @@ func main() {
 	// If parse rate is 2, then every 2 frames is parsed, and so on
 	registerFrameHandler(&p, &currentGame, &currentRound, &smokes, &roundInFreezetime,
 		&roundInEndTime, &freezeTimeSetFromGameState, &currentFrameIdx, &parseFrames, &globalFrameIndex)
+
 	// Parse demofile to end
 	err = p.ParseToEnd()
 	currentGame.ParsedToFrame = int64(p.CurrentFrame())
@@ -2781,6 +2780,7 @@ func main() {
 
 	// Check error
 	if err != nil {
+		logger.Println(err)
 		if errors.Is(err, dem.ErrUnexpectedEndOfDemo) {
 			logger.Println(err)
 			logger.Println("ErrUnexpectedEndOfDemo signals that the demo" +
