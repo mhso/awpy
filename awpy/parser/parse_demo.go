@@ -2629,15 +2629,6 @@ func main() {
 	checkError(err)
 	defer f.Close()
 
-	// // Create new demoparser
-	// cfg := dem.DefaultParserConfig
-	// cfg.AdditionalNetMessageCreators = map[int]dem.NetMessageCreator{
-	// 	int(msg.EDemoCommands_DEM_FileHeader): func() proto.Message {
-	// 		return new(msg.CDemoFileHeader)
-	// 	},
-	// }
-
-	// p := dem.NewParserWithConfig(f, cfg)
 	p := dem.NewParser(f)
 	defer p.Close()
 
